@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import torch
 from tqdm import tqdm
+from typing import Tuple
+from torch import Tensor
 
 
 class OneFold:
@@ -32,7 +34,7 @@ class OneFold:
 
         return len(self.ccl_list_tr) + len(self.ccl_list_te)
 
-    def get_samples_quantity(self, usage):
+    def get_samples_quantity(self, usage: str) -> int:
         if str(usage).lower() == 'train':
             return len(self.ccl_list_tr)
         elif str(usage).lower() == 'test':
@@ -41,7 +43,7 @@ class OneFold:
             print('Invalid usage in get_samples_quantity()')
             exit(1)
 
-    def to_numpy(self, usage):
+    def to_numpy(self, usage: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         if str(usage).lower() == 'train':
             return np.array(self.ccl_list_tr, dtype=float), np.array(self.df_list_tr, dtype=float), \
                    np.array(self.resp_list_tr, dtype=float)
@@ -52,16 +54,16 @@ class OneFold:
             print('Invalid usage in to_numpy()')
             exit(1)
 
-    def to_tensor(self, usage):
+    def to_tensor(self, usage: str) -> Tuple[Tensor, Tensor, Tensor]:
         ccl, df, resp = self.to_numpy(usage)
 
         return torch.from_numpy(ccl).type(torch.float32), torch.from_numpy(df).type(torch.float32), torch.from_numpy(
-            resp).type(torch.float32)
+            resp).type(torch.float32).view(-1, 1)
 
 
 class DRP2022Data:
 
-    def __init__(self, source, ccl_path, df_path, resp_path):
+    def __init__(self, source: str, ccl_path: str, df_path: str, resp_path: str):
         self.source = str(source).upper()
         if self.source != 'GDSC' and self.source != 'CTRP':
             print('Invalid data source')
@@ -70,7 +72,7 @@ class DRP2022Data:
         self.df_df = pd.read_csv(df_path)
         self.resp_df = pd.read_csv(resp_path)
 
-    def get_fold(self, fold_type, fold_idx):
+    def get_fold(self, fold_type: str, fold_idx: int) -> OneFold:
         fold = OneFold(fold_type, fold_idx)
         print('Parsing {} data (fold_type={}, fold_idx={})'.format(self.source, fold_type, fold_idx))
 
@@ -82,7 +84,6 @@ class DRP2022Data:
                     resp = row['ln_ic50']
                     row_fold_idx = row[fold_type]
                     fold.append_data(ccl, df, resp, row_fold_idx)
-                break
 
         elif self.source == 'CTRP':
             for idx, row in tqdm(self.resp_df.iterrows(), total=len(self.resp_df.index)):
@@ -94,17 +95,3 @@ class DRP2022Data:
                     fold.append_data(ccl, df, resp, row_fold_idx)
 
         return fold
-
-
-gdsc = DRP2022Data('GDSC',
-                   '../data/DRP2022_preprocessed/sanger/sanger_broad_ccl_log2tpm.csv',
-                   '../data/DRP2022_preprocessed/drug_features/gdsc_drug_descriptors.csv',
-                   '../data/DRP2022_preprocessed/drug_response/gdsc_tuple_labels_folds.csv')
-fold_0 = gdsc.get_fold('cl_fold', 0)
-tr_ccl, _, _ = fold_0.to_tensor('train')
-print(tr_ccl)
-print(tr_ccl.shape)
-print(type(tr_ccl))
-print(tr_ccl.min(), tr_ccl.max(), tr_ccl.mean(), tr_ccl.std())
-
-exit(0)
