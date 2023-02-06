@@ -4,6 +4,7 @@ results/*
 gpu-request1.sh
 gpu-request_4h.sh
 data/tensors_uncleaned/
+tensors/
 .idea/*
 .DS_Store
 *.csv

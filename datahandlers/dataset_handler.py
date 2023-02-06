@@ -1,11 +1,22 @@
-from typing import Tuple
-from csv_handler import DRP2022Data, OneFold
+import os
+from abc import ABC, abstractmethod
+from typing import Tuple, List
+from datahandlers.csv_handler import DRP2022Data
 from torch.utils.data import Dataset
 from torch import Tensor
+from torch import save as torch_save
 
 
-class PreprocessRule:
+# Implement it in custom_preprocess_rule.py
+class PreprocessRule(ABC):
 
+    def __init__(self, tag: str):
+        self.tag = tag
+
+    # Input as a list of [train, test], output as [train, test]
+    @abstractmethod
+    def preprocess(self, data: List[Tensor]) -> List[Tensor]:
+        pass
 
 
 class MyDataset(Dataset):
@@ -16,43 +27,67 @@ class MyDataset(Dataset):
         self.y = resp
 
     def __len__(self) -> int:
-
         return len(self.y)
 
     def __getitem__(self, idx) -> Tuple[Tensor, Tensor, Tensor]:
-
         return self.x1[idx], self.x2[idx], self.y[idx]
 
 
-class DRPDataset:
-
+class DRPGeneralDataset:
 
     def __init__(self):
-        self.drp2022data = None
-        # self.x1_tr = ccl_tr
-        # self.x2_tr = df_tr
-        # self.y_tr = resp_tr
-        # self.x1_te = ccl_te
-        # self.x2_te = df_te
-        # self.y_te = resp_te
+        self.source = None
+        self.__drp2022data: DRP2022Data = None
 
     def load_from_csv(self, source: str, ccl_path: str, df_path: str, resp_path: str):
-        self.drp2022data = DRP2022Data(source, ccl_path, df_path, resp_path)
+        self.__drp2022data = DRP2022Data(source, ccl_path, df_path, resp_path)
+        self.source = source.upper()
 
-    def get_fold(self, fold_type: str, fold_idx: int, preprocess: PreprocessRule=None) -> Tuple[MyDataset, MyDataset]:
-        
+    # Returns train and test datasets
+    def get_fold(self, fold_type: str, fold_idx: int,
+                 preprocess: PreprocessRule = None, save=True) -> Tuple[MyDataset, MyDataset]:
+        if self.__drp2022data is None:
+            print('Please load the data first in DRPDataset')
+            exit(1)
+        else:
+            one_fold = self.__drp2022data.get_fold(fold_type, fold_idx)
+            print('Transferring to torch.Tensor')
+            ccl_tr, df_tr, resp_tr = one_fold.to_tensor('train')
+            ccl_te, df_te, resp_te = one_fold.to_tensor('test')
+            if preprocess is not None:
+                print('Preprocessing')
+                ccl_tmp = preprocess.preprocess([ccl_tr, ccl_te])
+                df_tmp = preprocess.preprocess([df_tr, df_te])
+                resp_tmp = preprocess.preprocess([resp_tr, resp_te])
 
+                if save:
+                    save_path = os.path.join(os.getcwd(), 'tensors', preprocess.tag, self.source,
+                                             fold_type.lower() + str(fold_idx))
+                    if not os.path.exists(save_path):
+                        os.mkdir(save_path)
+                    print('Saving processed torch.Tensor to {}'.format(save_path))
+                    torch_save(ccl_tmp[0], os.path.join(save_path, 'TRAIN_CCL.pt'))
+                    torch_save(ccl_tmp[1], os.path.join(save_path, 'TEST_CCL.pt'))
+                    torch_save(df_tmp[0], os.path.join(save_path, 'TRAIN_DF.pt'))
+                    torch_save(df_tmp[1], os.path.join(save_path, 'TEST_DF.pt'))
+                    torch_save(resp_tmp[0], os.path.join(save_path, 'TRAIN_RESP.pt'))
+                    torch_save(resp_tmp[1], os.path.join(save_path, 'TEST_RESP.pt'))
 
+                return MyDataset(ccl_tmp[0], df_tmp[0], resp_tmp[0]), MyDataset(ccl_tmp[1], df_tmp[1], resp_tmp[1])
 
-# gdsc = DRP2022Data('GDSC',
-#                    '../data/DRP2022_preprocessed/sanger/sanger_broad_ccl_log2tpm.csv',
-#                    '../data/DRP2022_preprocessed/drug_features/gdsc_drug_descriptors.csv',
-#                    '../data/DRP2022_preprocessed/drug_response/gdsc_tuple_labels_folds.csv')
-fold_0 = gdsc.get_fold('cl_fold', 0)
-tr_ccl, tr_df, tr_resp = fold_0.to_tensor('train')
-print(tr_resp)
-print(tr_resp.shape)
-print(type(tr_resp))
-print(tr_resp.min(), tr_resp.max(), tr_resp.mean(), tr_resp.std())
+            else:
 
-exit(0)
+                if save:
+                    save_path = os.path.join(os.getcwd(), 'tensors', 'raw', self.source,
+                                             fold_type.lower() + str(fold_idx))
+                    if not os.path.exists(save_path):
+                        os.mkdir(save_path)
+                    print('Saving processed torch.Tensor to {}'.format(save_path))
+                    torch_save(ccl_tr, os.path.join(save_path, 'TRAIN_CCL.pt'))
+                    torch_save(ccl_te, os.path.join(save_path, 'TEST_CCL.pt'))
+                    torch_save(df_tr, os.path.join(save_path, 'TRAIN_DF.pt'))
+                    torch_save(df_te, os.path.join(save_path, 'TEST_DF.pt'))
+                    torch_save(resp_tr, os.path.join(save_path, 'TRAIN_RESP.pt'))
+                    torch_save(resp_te, os.path.join(save_path, 'TEST_RESP.pt'))
+
+                return MyDataset(ccl_tr, df_tr, resp_tr), MyDataset(ccl_te, df_te, resp_te)
