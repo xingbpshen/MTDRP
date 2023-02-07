@@ -1,11 +1,12 @@
+import torch
+from torch import Tensor, zeros_like
 from typing import List
 from datahandlers.dataset_handler import PreprocessRule
-from torch import Tensor, zeros_like
 from tqdm import tqdm
 
 
 # Customized min-max normalization rule
-# Accepts a list of 2 2-D Tensors (n, f) with the same f size
+# Accepts a list of 2 2-D Tensors [train, test] (n, f) with the same f size
 class NormalizationMinMax(PreprocessRule):
 
     def __init__(self):
@@ -33,13 +34,31 @@ class NormalizationMinMax(PreprocessRule):
             processed_data[0][:, j] = (data[0][:, j] - min_val) / (max_val - min_val)
             processed_data[1][:, j] = (data[1][:, j] - min_val) / (max_val - min_val)
 
+            processed_data[0] = torch.nan_to_num(processed_data[0])
+            processed_data[1] = torch.nan_to_num(processed_data[1])
+
         return processed_data
 
 
-# def test(preprocess: PreprocessRule = None):
-#     t1 = Tensor([[1, 2], [2, 1], [4, 4]])
-#     t2 = Tensor([[2, 1], [1, 2]])
-#     preprocess.preprocess([t1, t2])
-#
-#
-# test(NormalizationMinMax())
+# Customized standardization rule
+# Accepts a list of 2 2-D Tensors [train, test] (n, f) with the same f size
+class Standardization(PreprocessRule):
+
+    def __init__(self):
+        super(Standardization, self).__init__('Standardization')
+
+    def preprocess(self, data: List[Tensor]) -> List[Tensor]:
+        data_concat = torch.nan_to_num(torch.cat((data[0], data[1]), dim=0))
+        processed_data = [torch.nan_to_num(data[0].detach().clone()), torch.nan_to_num(data[1].detach().clone())]
+        f = data[0].shape[1]
+        print('Standardizing data')
+        for j in tqdm(range(f)):
+            mean = data_concat[:, j].mean()
+            std = data_concat[:, j].std()
+
+            processed_data[0][:, j] = (processed_data[0][:, j] - mean) / std
+            processed_data[1][:, j] = (processed_data[1][:, j] - mean) / std
+
+        del data_concat
+
+        return processed_data

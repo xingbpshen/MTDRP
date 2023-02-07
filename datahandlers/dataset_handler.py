@@ -27,10 +27,16 @@ class MyDataset(Dataset):
         self.y = resp
 
     def __len__(self) -> int:
-        return len(self.y)
+
+        return self.x1.shape[0]
 
     def __getitem__(self, idx) -> Tuple[Tensor, Tensor, Tensor]:
+
         return self.x1[idx], self.x2[idx], self.y[idx]
+
+    def get_f_size(self) -> Tuple[int, int, int]:
+
+        return self.x1.shape[1], self.x2.shape[1], self.y.shape[1]
 
 
 class DRPGeneralDataset:
@@ -64,7 +70,7 @@ class DRPGeneralDataset:
                     save_path = os.path.join(os.getcwd(), 'tensors', preprocess.tag, self.source,
                                              fold_type.lower() + str(fold_idx))
                     if not os.path.exists(save_path):
-                        os.mkdir(save_path)
+                        os.makedirs(save_path)
                     print('Saving processed torch.Tensor to {}'.format(save_path))
                     torch_save(ccl_tmp[0], os.path.join(save_path, 'TRAIN_CCL.pt'))
                     torch_save(ccl_tmp[1], os.path.join(save_path, 'TEST_CCL.pt'))
@@ -81,7 +87,7 @@ class DRPGeneralDataset:
                     save_path = os.path.join(os.getcwd(), 'tensors', 'raw', self.source,
                                              fold_type.lower() + str(fold_idx))
                     if not os.path.exists(save_path):
-                        os.mkdir(save_path)
+                        os.makedirs(save_path)
                     print('Saving processed torch.Tensor to {}'.format(save_path))
                     torch_save(ccl_tr, os.path.join(save_path, 'TRAIN_CCL.pt'))
                     torch_save(ccl_te, os.path.join(save_path, 'TEST_CCL.pt'))
