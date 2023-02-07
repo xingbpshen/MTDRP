@@ -61,4 +61,7 @@ class Standardization(PreprocessRule):
 
         del data_concat
 
+        processed_data[0] = torch.nan_to_num(processed_data[0])
+        processed_data[1] = torch.nan_to_num(processed_data[1])
+
         return processed_data
