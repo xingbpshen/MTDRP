@@ -145,7 +145,7 @@ if __name__ == '__main__':
     parser.add_argument('--source_path', help='Path to the data root')
     parser.add_argument('--batch_size', default=20, help='Batch size')
     parser.add_argument('--epochs', default=100, help='Total number of epochs')
-    parser.add_argument('--lr', default=2e-3, help='Learning rate')
+    parser.add_argument('--lr', default=1e-4, help='Learning rate')
     _args = parser.parse_args()
 
     main(_args)
