@@ -1,5 +1,6 @@
 import torch
-from torch import Tensor, zeros_like
+import gc
+from torch import Tensor
 from typing import List
 from datahandlers.dataset_handler import PreprocessRule
 from tqdm import tqdm
@@ -13,29 +14,22 @@ class NormalizationMinMax(PreprocessRule):
         super(NormalizationMinMax, self).__init__('NormalizationMinMax')
 
     def preprocess(self, data: List[Tensor]) -> List[Tensor]:
-        processed_data = [zeros_like(data[0]), zeros_like(data[1])]
+        data_concat = torch.nan_to_num(torch.cat((data[0], data[1]), dim=0))
+        processed_data = [torch.nan_to_num(data[0].detach().clone()), torch.nan_to_num(data[1].detach().clone())]
         f = data[0].shape[1]
         print('Normalizing data (min-max)')
         for j in tqdm(range(f)):
-            min0 = data[0][:, j].min()
-            min1 = data[1][:, j].min()
-            if min0 < min1:
-                min_val = min0
-            else:
-                min_val = min1
+            min_val = data_concat[:, j].min()
+            max_val = data_concat[:, j].max()
+            diff = max_val - min_val
 
-            max0 = data[0][:, j].max()
-            max1 = data[1][:, j].max()
-            if max0 > max1:
-                max_val = max0
-            else:
-                max_val = max1
+            processed_data[0][:, j] = (processed_data[0][:, j] - min_val) / diff
+            processed_data[1][:, j] = (processed_data[1][:, j] - min_val) / diff
 
-            processed_data[0][:, j] = (data[0][:, j] - min_val) / (max_val - min_val)
-            processed_data[1][:, j] = (data[1][:, j] - min_val) / (max_val - min_val)
+        del data_concat
 
-            processed_data[0] = torch.nan_to_num(processed_data[0])
-            processed_data[1] = torch.nan_to_num(processed_data[1])
+        processed_data[0] = torch.nan_to_num(processed_data[0])
+        processed_data[1] = torch.nan_to_num(processed_data[1])
 
         return processed_data
 
@@ -52,16 +46,21 @@ class Standardization(PreprocessRule):
         processed_data = [torch.nan_to_num(data[0].detach().clone()), torch.nan_to_num(data[1].detach().clone())]
         f = data[0].shape[1]
         print('Standardizing data')
+        mean_list = data_concat.mean(0)
+        std_list = data_concat.std(0)
+        del data_concat
+        gc.collect()
         for j in tqdm(range(f)):
-            mean = data_concat[:, j].mean()
-            std = data_concat[:, j].std()
+            mean = mean_list[j]
+            std = std_list[j]
 
             processed_data[0][:, j] = (processed_data[0][:, j] - mean) / std
             processed_data[1][:, j] = (processed_data[1][:, j] - mean) / std
 
-        del data_concat
-
         processed_data[0] = torch.nan_to_num(processed_data[0])
         processed_data[1] = torch.nan_to_num(processed_data[1])
+
+        del mean_list, std_list
+        gc.collect()
 
         return processed_data

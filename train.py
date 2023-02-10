@@ -1,6 +1,6 @@
 import argparse
 import torch
-from models.mlp import MLP
+from models.mlp import ResMLP50 as MLP
 from torch.utils.data import DataLoader
 from torchmetrics import PearsonCorrCoef, SpearmanCorrCoef
 from typing import Tuple
@@ -53,8 +53,9 @@ def train(dl, model, optimizer, epoch):
 
     for i, (x1, x2, y) in t_loader:
 
-        # for s in optimizer.param_groups:
-        #     s['lr'] = pow(12, -0.5) * min(pow(i + 1, -0.5), (i + 1) * pow(int(len_dataloader * 0.04), -1.5))
+        if epoch % 20 == 0:
+            for s in optimizer.param_groups:
+                s['lr'] = s['lr'] / 10
 
         x1, x2, y = x1.to(my_device), x2.to(my_device), y.to(my_device)
 
