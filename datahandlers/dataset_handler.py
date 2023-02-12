@@ -105,8 +105,8 @@ class DRPDADataset:
         self.source = None
         self.__drp2022data: DRP2022DAData = None
 
-    def load_from_csv(self, source: str, ccl_path: str, df_path: str, resp_path: str, ccl2_path: str):
-        self.__drp2022data = DRP2022DAData(source, ccl_path, df_path, resp_path, ccl2_path)
+    def load_from_csv(self, source: str, ccl_path: str, df_path: str, resp_path: str, ccl2_path: str, df2_path: str):
+        self.__drp2022data = DRP2022DAData(source, ccl_path, df_path, resp_path, ccl2_path, df2_path)
         self.source = source.upper()
 
     # Returns train and test datasets

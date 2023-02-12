@@ -100,8 +100,9 @@ class DRP2022Data:
 
 class DRP2022DAData(DRP2022Data):
 
-    def __init__(self, source: str, ccl_path: str, df_path: str, resp_path: str, ccl2_path: str):
+    def __init__(self, source: str, ccl_path: str, df_path: str, resp_path: str, ccl2_path: str, df2_path: str):
         super(DRP2022DAData, self).__init__(source, ccl_path, df_path, resp_path)
+
         self.ccl_df = pd.read_csv(ccl_path, index_col=0).T
         ccl2_df = pd.read_csv(ccl2_path, index_col=0).T
         common_genes = list(set(self.ccl_df.columns).intersection(set(ccl2_df.columns)))
@@ -109,6 +110,15 @@ class DRP2022DAData(DRP2022Data):
         del ccl2_df
         # Get intersection genes
         self.ccl_df = self.ccl_df.T.reset_index()
+
+        self.df_df = pd.read_csv(df_path, index_col=0)
+        df2_df = pd.read_csv(df2_path, index_col=0)
+        common_descriptors = list(set(self.df_df.columns).intersection(set(df2_df.columns)))
+        self.df_df = self.df_df[common_descriptors]
+        del df2_df
+        self.df_df = self.df_df.reset_index()
+
+        gc.collect()
 
     def get_fold(self, fold_type: str, fold_idx: int) -> OneFold:
         fold = OneFold(fold_type, fold_idx)

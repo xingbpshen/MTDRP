@@ -18,18 +18,23 @@ class NormalizationMinMax(PreprocessRule):
         processed_data = [torch.nan_to_num(data[0].detach().clone()), torch.nan_to_num(data[1].detach().clone())]
         f = data[0].shape[1]
         print('Normalizing data (min-max)')
+        min_list = data_concat.min(0).values
+        max_list = data_concat.max(0).values
+        del data_concat
+        gc.collect()
         for j in tqdm(range(f)):
-            min_val = data_concat[:, j].min()
-            max_val = data_concat[:, j].max()
+            min_val = min_list[j]
+            max_val = max_list[j]
             diff = max_val - min_val
 
             processed_data[0][:, j] = (processed_data[0][:, j] - min_val) / diff
             processed_data[1][:, j] = (processed_data[1][:, j] - min_val) / diff
 
-        del data_concat
-
         processed_data[0] = torch.nan_to_num(processed_data[0])
         processed_data[1] = torch.nan_to_num(processed_data[1])
+
+        del min_list, max_list
+        gc.collect()
 
         return processed_data
 
