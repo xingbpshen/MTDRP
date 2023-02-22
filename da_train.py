@@ -30,17 +30,21 @@ def load_data_tensor(path: str, batch_size: int, handle_nan: bool = False) -> Tu
     if handle_nan:
         df_tr = torch.nan_to_num(df_tr)
         df_te = torch.nan_to_num(df_te)
-        # In CTRP, [:, 147] values are extremely small -3.4028e+38, so ignore this drug feature
+        # In CTRP, [:, 147] or [:, 166] values are extremely small -3.4028e+38, so ignore this drug feature
         df_tr[:, 147] = 0.0
         df_te[:, 147] = 0.0
+        df_tr[:, 166] = 0.0
+        df_te[:, 166] = 0.0
 
     mds_tr = MyDataset(torch.load(join(path, 'TRAIN_CCL.pt')),
                        df_tr,
-                       torch.load(join(path, 'TRAIN_RESP.pt')))
+                       torch.load(join(path, 'TRAIN_RESP.pt')),
+                       torch.load(join(path, 'TRAIN_DRUGIDX.pt')))
 
     mds_te = MyDataset(torch.load(join(path, 'TEST_CCL.pt')),
                        df_te,
-                       torch.load(join(path, 'TEST_RESP.pt')))
+                       torch.load(join(path, 'TEST_RESP.pt')),
+                       torch.load(join(path, 'TEST_DRUGIDX.pt')))
 
     # Feature sizes, ccl, df, resp
     f1, f2, f3 = mds_tr.get_f_size()
@@ -63,7 +67,7 @@ def train(source, target, model, optimizer, epoch, epochs):
     loss_total_fin, loss_target_domain_fin, loss_source_y_fin = 0, 0, 0
     y_pred_list, y_list = [], []
 
-    for (i, (xs1, xs2, ys)), (_, (xt1, xt2, _)) in zip(s_loader, t_loader):
+    for (i, (xs1, xs2, ys, _)), (_, (xt1, xt2, _, _)) in zip(s_loader, t_loader):
         p = float(i + epoch * len_dataloader) / epochs / len_dataloader
         alpha = 2. / (1. + np.exp(-10 * p)) - 1
 
@@ -124,7 +128,7 @@ def test(target, model, epoch):
     test_loader = tqdm(enumerate(target), total=len(target))
     y_pred_list, y_list = [], []
 
-    for i, (x1, x2, y) in test_loader:
+    for i, (x1, x2, y, _) in test_loader:
 
         y = y.to(torch.int64)
         x1, x2, y = x1.to(my_device), x2.to(my_device), y.to(my_device)

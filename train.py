@@ -1,12 +1,14 @@
 import argparse
 import torch
-from models.mlp import ResMLP50 as MLP
+from models.mlp import MLP
+from models.transdrp import TransDRP
 from torch.utils.data import DataLoader
 from torchmetrics import PearsonCorrCoef, SpearmanCorrCoef
 from typing import Tuple
 from datahandlers.dataset_handler import MyDataset
 from os.path import join
 from tqdm.auto import tqdm
+from utils.metrics import mean_pcc_scc_per_drug
 
 if torch.cuda.is_available():
     my_device = torch.device('cuda:0')
@@ -16,8 +18,8 @@ else:
     my_device = torch.device('cpu')
 
 loss_regression = torch.nn.MSELoss()
-pearson = PearsonCorrCoef().to(my_device)
-spearman = SpearmanCorrCoef().to(my_device)
+pearson = PearsonCorrCoef().to(torch.device('cpu'))
+spearman = SpearmanCorrCoef().to(torch.device('cpu'))
 
 
 def load_data_tensor(path: str, batch_size: int, handle_nan: bool = False) -> Tuple[DataLoader, DataLoader, int, int, int]:
@@ -31,11 +33,13 @@ def load_data_tensor(path: str, batch_size: int, handle_nan: bool = False) -> Tu
 
     mds_tr = MyDataset(torch.load(join(path, 'TRAIN_CCL.pt')),
                        df_tr,
-                       torch.load(join(path, 'TRAIN_RESP.pt')))
+                       torch.load(join(path, 'TRAIN_RESP.pt')),
+                       torch.load(join(path, 'TRAIN_DRUGIDX.pt')))
 
     mds_te = MyDataset(torch.load(join(path, 'TEST_CCL.pt')),
                        df_te,
-                       torch.load(join(path, 'TEST_RESP.pt')))
+                       torch.load(join(path, 'TEST_RESP.pt')),
+                       torch.load(join(path, 'TEST_DRUGIDX.pt')))
 
     # Feature sizes, ccl, df, resp
     f1, f2, f3 = mds_tr.get_f_size()
@@ -49,13 +53,13 @@ def train(dl, model, optimizer, epoch):
     t_loader = tqdm(enumerate(dl), total=len(dl))
     len_dataloader = len(t_loader)
     mse_fin = 0
-    y_pred_list, y_list = [], []
+    y_pred_list, y_list, drugidx_list = [], [], []
 
-    for i, (x1, x2, y) in t_loader:
+    for i, (x1, x2, y, drugidx) in t_loader:
 
-        if epoch % 20 == 0:
-            for s in optimizer.param_groups:
-                s['lr'] = s['lr'] / 10
+        # if epoch % 20 == 0:
+        #     for s in optimizer.param_groups:
+        #         s['lr'] = s['lr'] / 10
 
         x1, x2, y = x1.to(my_device), x2.to(my_device), y.to(my_device)
 
@@ -66,6 +70,7 @@ def train(dl, model, optimizer, epoch):
         loss = loss_regression(y_pred, y)
         y_pred_list.append(torch.flatten(y_pred).tolist())
         y_list.append(torch.flatten(y).tolist())
+        drugidx_list.append(torch.flatten(drugidx).tolist())
 
         loss.backward()
 
@@ -74,15 +79,17 @@ def train(dl, model, optimizer, epoch):
         optimizer.step()
 
     mse_fin = mse_fin / len_dataloader
-    y_pred_list = torch.flatten(torch.Tensor(y_pred_list)).to(my_device)
-    y_list = torch.flatten(torch.Tensor(y_list)).to(my_device)
+    y_pred_list = torch.flatten(torch.Tensor(y_pred_list))
+    y_list = torch.flatten(torch.Tensor(y_list))
+    drugidx_list = torch.flatten(torch.Tensor(drugidx_list))
     print(y_pred_list, '\n', y_list)
-    pearson_fin = pearson(y_pred_list, y_list)
-    spearman_fin = spearman(y_pred_list, y_list)
+    # pearson_fin = pearson(y_pred_list.to(torch.device('cpu')), y_list.to(torch.device('cpu')))
+    # spearman_fin = spearman(y_pred_list.to(torch.device('cpu')), y_list.to(torch.device('cpu')))
+    pearson_fin, spearman_fin = mean_pcc_scc_per_drug(y_pred_list, y_list, drugidx_list)
     print('EPOCH {} TRAINING SET RESULTS: Average regression loss: {:.4f} pearson: {:.4f} spearman: {:.4f}'
           .format(epoch, mse_fin, pearson_fin, spearman_fin))
 
-    del x1, x2, y, y_pred_list, y_list
+    del x1, x2, y, y_pred_list, y_list, drugidx_list
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -93,9 +100,9 @@ def test(dl, model, epoch):
     test_loader = tqdm(enumerate(dl), total=len(dl))
     len_dataloader = len(test_loader)
     mse_fin = 0
-    y_pred_list, y_list = [], []
+    y_pred_list, y_list, drugidx_list = [], [], []
 
-    for i, (x1, x2, y) in test_loader:
+    for i, (x1, x2, y, drugidx) in test_loader:
 
         x1, x2, y = x1.to(my_device), x2.to(my_device), y.to(my_device)
 
@@ -104,25 +111,29 @@ def test(dl, model, epoch):
         loss = loss_regression(y_pred, y)
         y_pred_list.append(torch.flatten(y_pred).tolist())
         y_list.append(torch.flatten(y).tolist())
+        drugidx_list.append(torch.flatten(drugidx).tolist())
 
         mse_fin += loss.item()
 
     mse_fin = mse_fin / len_dataloader
-    y_pred_list = torch.flatten(torch.Tensor(y_pred_list)).to(my_device)
-    y_list = torch.flatten(torch.Tensor(y_list)).to(my_device)
+    y_pred_list = torch.flatten(torch.Tensor(y_pred_list))
+    y_list = torch.flatten(torch.Tensor(y_list))
+    drugidx_list = torch.flatten(torch.Tensor(drugidx_list))
     print(y_pred_list, '\n', y_list)
-    pearson_fin = pearson(y_pred_list, y_list)
-    spearman_fin = spearman(y_pred_list, y_list)
+    # pearson_fin = pearson(y_pred_list.to(torch.device('cpu')), y_list.to(torch.device('cpu')))
+    # spearman_fin = spearman(y_pred_list.to(torch.device('cpu')), y_list.to(torch.device('cpu')))
+    pearson_fin, spearman_fin = mean_pcc_scc_per_drug(y_pred_list, y_list, drugidx_list)
     print('EPOCH {} TESTING RESULTS: Average mse: {:.4f} pearson: {:.4f} spearman: {:.4f}'
           .format(epoch, mse_fin, pearson_fin, spearman_fin))
 
-    del x1, x2, y, y_pred_list, y_list
+    del x1, x2, y, y_pred_list, y_list, drugidx_list
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
 
 def main(args):
+    model_name = str(args.model)
     source_path = str(args.source_path)
     batch_size = int(args.batch_size)
     epochs = int(args.epochs)
@@ -130,7 +141,14 @@ def main(args):
 
     dl_tr, dl_te, f1, f2, f3 = load_data_tensor(source_path, batch_size, handle_nan=True)
 
-    model = MLP(f1, f2, f3)
+    model = None
+    if model_name == 'mlp':
+        model = MLP(f1, f2, f3)
+    elif model_name == 'transdrp':
+        model = TransDRP(f1, f2, f3)
+    else:
+        print('Invalid model')
+        exit(1)
     model = model.to(my_device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -143,8 +161,9 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--model', help='The model (mlp, transdrp)')
     parser.add_argument('--source_path', help='Path to the data root')
-    parser.add_argument('--batch_size', default=20, help='Batch size')
+    parser.add_argument('--batch_size', default=40, help='Batch size')
     parser.add_argument('--epochs', default=100, help='Total number of epochs')
     parser.add_argument('--lr', default=1e-4, help='Learning rate')
     _args = parser.parse_args()

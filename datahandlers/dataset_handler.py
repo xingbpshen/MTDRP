@@ -21,18 +21,19 @@ class PreprocessRule(ABC):
 
 class MyDataset(Dataset):
 
-    def __init__(self, ccl: Tensor, df: Tensor, resp: Tensor):
+    def __init__(self, ccl: Tensor, df: Tensor, resp: Tensor, drugidx: Tensor):
         self.x1 = ccl
         self.x2 = df
         self.y = resp
+        self.drugidx = drugidx
 
     def __len__(self) -> int:
 
         return self.x1.shape[0]
 
-    def __getitem__(self, idx) -> Tuple[Tensor, Tensor, Tensor]:
+    def __getitem__(self, idx) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
 
-        return self.x1[idx], self.x2[idx], self.y[idx]
+        return self.x1[idx], self.x2[idx], self.y[idx], self.drugidx[idx]
 
     def get_f_size(self) -> Tuple[int, int, int]:
 
@@ -58,13 +59,14 @@ class DRPGeneralDataset:
         else:
             one_fold = self.__drp2022data.get_fold(fold_type, fold_idx)
             print('Transferring to torch.Tensor')
-            ccl_tr, df_tr, resp_tr = one_fold.to_tensor('train')
-            ccl_te, df_te, resp_te = one_fold.to_tensor('test')
+            ccl_tr, df_tr, resp_tr, drugidx_tr = one_fold.to_tensor('train')
+            ccl_te, df_te, resp_te, drugidx_te = one_fold.to_tensor('test')
             if preprocess is not None:
                 print('Preprocessing')
                 ccl_tmp = preprocess.preprocess([ccl_tr, ccl_te])
                 df_tmp = preprocess.preprocess([df_tr, df_te])
-                resp_tmp = preprocess.preprocess([resp_tr, resp_te])
+                # resp_tmp = preprocess.preprocess([resp_tr, resp_te])
+                resp_tmp = [resp_tr, resp_te]
 
                 if save:
                     save_path = os.path.join(os.getcwd(), 'tensors', preprocess.tag, self.source,
@@ -78,8 +80,11 @@ class DRPGeneralDataset:
                     torch_save(df_tmp[1], os.path.join(save_path, 'TEST_DF.pt'))
                     torch_save(resp_tmp[0], os.path.join(save_path, 'TRAIN_RESP.pt'))
                     torch_save(resp_tmp[1], os.path.join(save_path, 'TEST_RESP.pt'))
+                    torch_save(drugidx_tr, os.path.join(save_path, 'TRAIN_DRUGIDX.pt'))
+                    torch_save(drugidx_te, os.path.join(save_path, 'TEST_DRUGIDX.pt'))
 
-                return MyDataset(ccl_tmp[0], df_tmp[0], resp_tmp[0]), MyDataset(ccl_tmp[1], df_tmp[1], resp_tmp[1])
+                return MyDataset(ccl_tmp[0], df_tmp[0], resp_tmp[0], drugidx_tr), \
+                       MyDataset(ccl_tmp[1], df_tmp[1], resp_tmp[1], drugidx_te)
 
             else:
 
@@ -95,8 +100,10 @@ class DRPGeneralDataset:
                     torch_save(df_te, os.path.join(save_path, 'TEST_DF.pt'))
                     torch_save(resp_tr, os.path.join(save_path, 'TRAIN_RESP.pt'))
                     torch_save(resp_te, os.path.join(save_path, 'TEST_RESP.pt'))
+                    torch_save(drugidx_tr, os.path.join(save_path, 'TRAIN_DRUGIDX.pt'))
+                    torch_save(drugidx_te, os.path.join(save_path, 'TEST_DRUGIDX.pt'))
 
-                return MyDataset(ccl_tr, df_tr, resp_tr), MyDataset(ccl_te, df_te, resp_te)
+                return MyDataset(ccl_tr, df_tr, resp_tr, drugidx_tr), MyDataset(ccl_te, df_te, resp_te, drugidx_te)
 
 
 class DRPDADataset:
@@ -118,8 +125,8 @@ class DRPDADataset:
         else:
             one_fold = self.__drp2022data.get_fold(fold_type, fold_idx)
             print('Transferring to torch.Tensor')
-            ccl_tr, df_tr, resp_tr = one_fold.to_tensor('train')
-            ccl_te, df_te, resp_te = one_fold.to_tensor('test')
+            ccl_tr, df_tr, resp_tr, drugidx_tr = one_fold.to_tensor('train')
+            ccl_te, df_te, resp_te, drugidx_te = one_fold.to_tensor('test')
             if preprocess is not None:
                 print('Preprocessing')
                 ccl_tmp = preprocess.preprocess([ccl_tr, ccl_te])
@@ -137,8 +144,11 @@ class DRPDADataset:
                     torch_save(df_tmp[1], os.path.join(save_path, 'TEST_DF.pt'))
                     torch_save(resp_tr, os.path.join(save_path, 'TRAIN_RESP.pt'))
                     torch_save(resp_te, os.path.join(save_path, 'TEST_RESP.pt'))
+                    torch_save(drugidx_tr, os.path.join(save_path, 'TRAIN_DRUGIDX.pt'))
+                    torch_save(drugidx_te, os.path.join(save_path, 'TEST_DRUGIDX.pt'))
 
-                return MyDataset(ccl_tmp[0], df_tmp[0], resp_tr), MyDataset(ccl_tmp[1], df_tmp[1], resp_te)
+                return MyDataset(ccl_tmp[0], df_tmp[0], resp_tr, drugidx_tr), \
+                       MyDataset(ccl_tmp[1], df_tmp[1], resp_te, drugidx_te)
 
             else:
 
@@ -154,5 +164,7 @@ class DRPDADataset:
                     torch_save(df_te, os.path.join(save_path, 'TEST_DF.pt'))
                     torch_save(resp_tr, os.path.join(save_path, 'TRAIN_RESP.pt'))
                     torch_save(resp_te, os.path.join(save_path, 'TEST_RESP.pt'))
+                    torch_save(drugidx_tr, os.path.join(save_path, 'TRAIN_DRUGIDX.pt'))
+                    torch_save(drugidx_te, os.path.join(save_path, 'TEST_DRUGIDX.pt'))
 
-                return MyDataset(ccl_tr, df_tr, resp_tr), MyDataset(ccl_te, df_te, resp_te)
+                return MyDataset(ccl_tr, df_tr, resp_tr, drugidx_tr), MyDataset(ccl_te, df_te, resp_te, drugidx_te)

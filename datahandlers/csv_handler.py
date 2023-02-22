@@ -16,17 +16,20 @@ class OneFold:
         self.ccl_list_tr, self.ccl_list_te = [], []
         self.df_list_tr, self.df_list_te = [], []
         self.resp_list_tr, self.resp_list_te = [], []
+        self.drugidx_list_tr, self.drugidx_list_te = [], []
 
     # Appending one row of data
-    def append_data(self, ccl, df, resp, fold_idx):
+    def append_data(self, ccl, df, resp, drugidx, fold_idx):
         if fold_idx == self.fold_idx and int(fold_idx) >= 0:
             self.ccl_list_te.append(ccl)
             self.df_list_te.append(df)
             self.resp_list_te.append(resp)
+            self.drugidx_list_te.append(drugidx)
         elif fold_idx != self.fold_idx and int(fold_idx) >= 0:
             self.ccl_list_tr.append(ccl)
             self.df_list_tr.append(df)
             self.resp_list_tr.append(resp)
+            self.drugidx_list_tr.append(drugidx)
         else:
             print('Error in append_data, invalid fold_idx.')
             exit(1)
@@ -44,22 +47,22 @@ class OneFold:
             print('Invalid usage in get_samples_quantity()')
             exit(1)
 
-    def to_numpy(self, usage: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def to_numpy(self, usage: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         if str(usage).lower() == 'train':
             return np.array(self.ccl_list_tr, dtype=float), np.array(self.df_list_tr, dtype=float), \
-                   np.array(self.resp_list_tr, dtype=float)
+                   np.array(self.resp_list_tr, dtype=float), np.array(self.drugidx_list_tr, dtype=float)
         elif str(usage).lower() == 'test':
             return np.array(self.ccl_list_te, dtype=float), np.array(self.df_list_te, dtype=float), \
-                   np.array(self.resp_list_te, dtype=float)
+                   np.array(self.resp_list_te, dtype=float), np.array(self.drugidx_list_te, dtype=float)
         else:
             print('Invalid usage in to_numpy()')
             exit(1)
 
-    def to_tensor(self, usage: str) -> Tuple[Tensor, Tensor, Tensor]:
-        ccl, df, resp = self.to_numpy(usage)
+    def to_tensor(self, usage: str) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        ccl, df, resp, drugidx = self.to_numpy(usage)
 
         return torch.from_numpy(ccl).type(torch.float32), torch.from_numpy(df).type(torch.float32), torch.from_numpy(
-            resp).type(torch.float32).view(-1, 1)
+            resp).type(torch.float32).view(-1, 1), torch.from_numpy(drugidx).type(torch.float32).view(-1, 1)
 
 
 class DRP2022Data:
@@ -77,14 +80,35 @@ class DRP2022Data:
         fold = OneFold(fold_type, fold_idx)
         print('Parsing {} data (fold_type={}, fold_idx={})'.format(self.source, fold_type, fold_idx))
 
+        def pre_run() -> DrugRespTable:
+            print('Pre-running')
+            _table = DrugRespTable()
+            if self.source == 'GDSC':
+                for _idx, _row in tqdm(self.resp_df.iterrows(), total=len(self.resp_df.index)):
+                    if _row['has_expr_from_sanger']:
+                        _resp = _row['ln_ic50']
+                        _table.append(_row['drug'], float(_resp))
+                return _table
+
+            elif self.source == 'CTRP':
+                for _idx, _row in tqdm(self.resp_df.iterrows(), total=len(self.resp_df.index)):
+                    if _row['has_expr_from_depmap']:
+                        _resp = _row['auc']
+                        _table.append(_row['drug'], float(_resp))
+                return _table
+
+        table = pre_run()
+
         if self.source == 'GDSC':
             for idx, row in tqdm(self.resp_df.iterrows(), total=len(self.resp_df.index)):
                 if row['has_expr_from_sanger']:
                     ccl = (self.ccl_df[row['cell_line']]).to_numpy()
                     df = (self.df_df[self.df_df.iloc[:, 0] == row['drug']]).iloc[:, 1:].to_numpy()[0]
                     resp = row['ln_ic50']
+                    # Standardizing responses per drug
+                    resp = (float(resp) - table.get_resp_mean(row['drug'])) / table.get_resp_std(row['drug'])
                     row_fold_idx = row[fold_type]
-                    fold.append_data(ccl, df, resp, row_fold_idx)
+                    fold.append_data(ccl, df, resp, table.get_index(row['drug']), row_fold_idx)
 
         elif self.source == 'CTRP':
             for idx, row in tqdm(self.resp_df.iterrows(), total=len(self.resp_df.index)):
@@ -92,8 +116,10 @@ class DRP2022Data:
                     ccl = (self.ccl_df[row['cell_line']]).to_numpy()
                     df = (self.df_df[self.df_df.iloc[:, 0] == row['drug']]).iloc[:, 1:].to_numpy()[0]
                     resp = row['auc']
+                    # Standardizing responses per drug
+                    resp = (float(resp) - table.get_resp_mean(row['drug'])) / table.get_resp_std(row['drug'])
                     row_fold_idx = row[fold_type]
-                    fold.append_data(ccl, df, resp, row_fold_idx)
+                    fold.append_data(ccl, df, resp, table.get_index(row['drug']), row_fold_idx)
 
         return fold
 
@@ -149,13 +175,14 @@ class DRP2022DAData(DRP2022Data):
                     ccl = (self.ccl_df[row['cell_line']]).to_numpy()
                     df = (self.df_df[self.df_df.iloc[:, 0] == row['drug']]).iloc[:, 1:].to_numpy()[0]
                     resp = row['ln_ic50']
+                    # Binary responses per drug
                     resp_mean = table.get_resp_mean(row['drug'])
                     if float(resp) >= resp_mean:
                         cate = 1
                     else:
                         cate = 0
                     row_fold_idx = row[fold_type]
-                    fold.append_data(ccl, df, cate, row_fold_idx)
+                    fold.append_data(ccl, df, cate, table.get_index(row['drug']), row_fold_idx)
 
         elif self.source == 'CTRP':
             for idx, row in tqdm(self.resp_df.iterrows(), total=len(self.resp_df.index)):
@@ -163,13 +190,14 @@ class DRP2022DAData(DRP2022Data):
                     ccl = (self.ccl_df[row['cell_line']]).to_numpy()
                     df = (self.df_df[self.df_df.iloc[:, 0] == row['drug']]).iloc[:, 1:].to_numpy()[0]
                     resp = row['auc']
+                    # Binary responses per drug
                     resp_mean = table.get_resp_mean(row['drug'])
                     if float(resp) >= resp_mean:
                         cate = 1
                     else:
                         cate = 0
                     row_fold_idx = row[fold_type]
-                    fold.append_data(ccl, df, cate, row_fold_idx)
+                    fold.append_data(ccl, df, cate, table.get_index(row['drug']), row_fold_idx)
 
         del table
         gc.collect()
@@ -209,4 +237,22 @@ class DrugRespTable:
                 return resp.mean()
 
         print('Error in get_resp_mean()')
+        exit(1)
+
+    def get_resp_std(self, drug: str) -> float:
+        for x in self.list:
+            if x.drug == drug:
+                resp = np.array(x.resp)
+                return resp.std()
+
+        print('Error in get_resp_std()')
+        exit(1)
+
+    def get_index(self, drug: str) -> int:
+        for i in range(len(self.list)):
+            x = self.list[i]
+            if x.drug == drug:
+                return i
+
+        print('Error in get_index()')
         exit(1)
