@@ -30,11 +30,11 @@ def load_data_tensor(path: str, batch_size: int, handle_nan: bool = False) -> Tu
     if handle_nan:
         df_tr = torch.nan_to_num(df_tr)
         df_te = torch.nan_to_num(df_te)
-        # In CTRP, [:, 147] or [:, 166] values are extremely small -3.4028e+38, so ignore this drug feature
-        df_tr[:, 147] = 0.0
-        df_te[:, 147] = 0.0
-        df_tr[:, 166] = 0.0
-        df_te[:, 166] = 0.0
+        # In CTRP, [:, 167] or [:, 172] values are extremely small -3.4028e+38, so ignore this drug feature
+        df_tr[:, 167] = 0.0
+        df_te[:, 167] = 0.0
+        df_tr[:, 172] = 0.0
+        df_te[:, 172] = 0.0
 
     mds_tr = MyDataset(torch.load(join(path, 'TRAIN_CCL.pt')),
                        df_tr,
@@ -180,8 +180,8 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--source_path', default='tensors/DAStandardization/CTRP/cl_fold0', help='Path to the source root')
-    parser.add_argument('--target_path', default='tensors/DAStandardization/GDSC/cl_fold0', help='Path to the target root')
+    parser.add_argument('--source_path', default='tensors/DAStandardization/CTRP/pair_fold0', help='Path to the source root')
+    parser.add_argument('--target_path', default='tensors/DAStandardization/GDSC/pair_fold0', help='Path to the target root')
     parser.add_argument('--batch_size', default=20, help='Batch size')
     parser.add_argument('--epochs', default=100, help='Total number of epochs')
     parser.add_argument('--lr', default=1e-4, help='Learning rate')
